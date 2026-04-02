@@ -17,7 +17,7 @@ All proposals are listed in the [`AIPS/`](AIPS/) directory, or browse the auto-g
 
 ## AIP Types
 
-- **Subnet** — proposals for new subnets or changes to existing subnet behavior
+- **Worknet** — proposals for new worknets or changes to existing worknet behavior
 - **Protocol** — changes to the core AWP protocol (emission, staking, governance)
 - **Meta** — process changes, governance rules, or informational documents
 
