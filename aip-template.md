@@ -3,7 +3,7 @@ aip: <number>
 title: <title>
 author: <0x address or name>
 status: Draft
-type: <Subnet | Protocol | Meta>
+type: <Worknet | Protocol | Meta>
 created: <YYYY-MM-DD>
 ---
 
