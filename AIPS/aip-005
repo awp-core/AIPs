@@ -1,0 +1,495 @@
+---
+aip: 6
+title: GOV WorkNet — Epistemic Market Governance
+description: A governance WorkNet that allocates AWP emission across WorkNets through a mechanism combining signed voting, prediction markets, and cognitive scoring. Stakers vote on allocation preferences and trade on predicted outcomes; the market separates informed participants from uninformed ones. AI agents participate as first-class voters. GOV is itself a WorkNet that must earn its emission — governance proves its value or loses its funding.
+author: gov <hi@gov.works>
+type: Worknet
+status: Draft
+created: 2026-04-22
+requires: AWP Whitepaper §WorkNet
+discussions-to: https://github.com/awp-core/AIPs/discussions
+license: CC0-1.0
+
+---
+
+## Abstract
+
+This AIP specifies GOV WorkNet, the governance infrastructure for the AWP ecosystem. GOV implements the Epistemic Market Governance (EMG) protocol — a mechanism that combines signed voting, prediction markets, and cognitive scoring to allocate AWP emission across all WorkNets. veAWP stakers submit weekly allocation preferences (votes) and predictions of the collective outcome, then trade outcome shares in a prediction market. Stakers who consistently predict more accurately than the market accumulate cognitive scores that amplify their voting weight. GOV is itself a WorkNet competing for emission alongside those it governs — its survival depends on stakers valuing the governance service. The proposal defines the three-phase weekly cycle, prediction market mechanics, cognitive scoring, token economics ($aGOV with linear 365-day emission), a six-category distribution model, and the Governance as a Service extensibility framework. GOV deploys on Base with `$aGOV` tradable against `$AWP` via Uniswap V4.
+
+## Motivation
+
+### DAO Governance Is Structurally Broken
+
+There are over 13,000 DAOs managing $35 billion in combined treasury assets. Fewer than 10% of eligible token holders participate in their governance. At ENS DAO, the top 1% of holders control 62.4% of all voting power. Across the broader DAO landscape, the top 10% control 76.2%. Arbitrum governance participation slumped 50% year-over-year in 2025.
+
+The consequences are not abstract. In April 2022, a $1 billion flash loan drained $182 million from Beanstalk through a governance exploit — proposal and execution in a single transaction. In 2023, Tornado Cash governance was seized through 1.2 million synthetic votes overwhelming 700,000 legitimate ones. In May 2024, borrowed COMP tokens worth $12 million swung a vote that nearly transferred $24 million from Compound's treasury to a five-wallet multisig.
+
+These are the predictable results of a system where participation is low, attention is scarce, and the cost of capture is often less than the value extracted. Rational ignorance dominates: reading a 40-page proposal costs an hour; your vote almost certainly isn't decisive; so you don't vote.
+
+### AWP Needs Weekly Governance at Machine Speed
+
+AWP emits 30.6 million tokens daily across its WorkNet ecosystem. That emission must be allocated — how much to data mining, how much to prediction markets, how much to community infrastructure, how much to identity verification, how much to governance itself. These are not annual budget decisions. They are weekly.
+
+Two WorkNets today, potentially dozens within a year. Each with its own metrics, economics, and claims on emission. A human voter would need to read every WorkNet's weekly report, cross-reference on-chain metrics, evaluate competing claims, and form a coherent allocation preference — every single week.
+
+No human will sustain this. But an AI agent will.
+
+### AI Agents Change the Governance Equation
+
+LLM agents can read every WorkNet report in seconds, cross-reference claims against on-chain data, track 20 epochs of historical performance, and form coherent multi-dimensional allocation preferences — weekly, without fatigue. Meta-analysis data shows automated decision procedures match or outperform humans in 84-94% of structured analysis tasks. Metaculus projects AI forecasting systems will surpass human Pro Forecasters by mid-2027.
+
+But intelligence without accountability produces nothing. EMG provides the accountability layer: a prediction market where every voter must put capital at risk on their analysis. The market doesn't care whether a participant is human or AI. It cares whether they're accurate.
+
+### Why a WorkNet
+
+Governance could be a protocol-level function, hard-coded and exempted from the constraints it imposes. EMG rejects this. GOV is a WorkNet — it competes for emission alongside Mine, Predict, KYA, and COM. If stakers believe governance is valuable, emission flows. If governance fails to justify itself, emission shrinks. The governance mechanism must earn its own survival through the same market test it applies to everyone else.
+
+This is the strictest possible accountability for governance: it cannot exempt itself from the resource allocation system it administers.
+
+## Terminology
+
+| Term                           | Definition                                                   |
+| ------------------------------ | ------------------------------------------------------------ |
+| **WorkNet**                    | An AWP sub-network where AI agents perform coordinated work for token rewards |
+| **GOV / GOV WorkNet / GovNet** | The WorkNet specified in this AIP                            |
+| **EMG**                        | Epistemic Market Governance — the protocol GOV implements    |
+| **Staker**                     | A veAWP holder who participates in GOV voting and trading. Stakers are the direct participants — GOV has no separate "Agent" role |
+| **Manager (Delegate)**         | An address authorized by a Staker via `AWPRegistry.grantDelegate()` to vote and trade on the Staker's behalf |
+| **AWP Power**                  | A Staker's veAWP time-weighted voting power, aggregated cross-chain at epoch open. Denoted $s_S$ |
+| **Chips**                      | Virtual trading capital issued to each Staker at epoch open, equal to their AWP Power |
+| **Preference Vote**            | A Staker's desired emission allocation vector $\mathbf{v}_S$ across all WorkNets |
+| **Prediction**                 | A Staker's forecast $\mathbf{f}_S$ of the aggregate vote outcome |
+| **Outcome Share**              | Tradeable unit in the prediction market; one chip splits into N outcome shares (one per WorkNet) |
+| **Cognitive Score**            | Historical performance metric $\mathcal{E}_S$ reflecting a Staker's accuracy, used to weight their future votes |
+| **Gov Token / $aGOV**          | GOV's WorkNet token. Holders share GOV's AWP emission proportionally |
+| **Epoch**                      | One weekly cycle: Wednesday UTC 12:00 to next Wednesday UTC 12:00 |
+
+## Specification
+
+The key words "MUST", "MUST NOT", "SHOULD", "SHOULD NOT", and "MAY" in this section are to be interpreted as described in RFC 2119.
+
+### 1. Token
+
+| Parameter  | Value                                                        |
+| ---------- | ------------------------------------------------------------ |
+| Name       | GOV                                                          |
+| Symbol     | $aGOV                                                        |
+| Standard   | ERC-20                                                       |
+| Chain      | Base                                                         |
+| Minter     | WorkNet Manager (sole minter)                                |
+| Max Supply | 10,000,000,000 $aGOV                                         |
+| Emission   | Linear over 365 days (see §1.1)                              |
+| Initial LP | 1,000,000,000 $aGOV + 1,000,000 $AWP (minted at activation per AWP protocol) |
+| Liquidity  | $aGOV ↔ $AWP on Uniswap V4 (Base)                            |
+
+At activation, the AWP protocol mints 1,000,000,000 $aGOV (10% of max supply) and pairs it with 1,000,000 $AWP (escrowed at registration) to bootstrap the Uniswap V4 liquidity pool. This is a one-time protocol-level operation, separate from the emission schedule.
+
+The remaining 9,000,000,000 $aGOV is minted by the WorkNet Manager according to the linear schedule in §1.1. No pre-mine, no team allocation.
+
+#### 1.1 Emission Schedule
+
+GOV uses a linear emission model: equal daily emission over 365 days (1 year), after which emission ceases.
+
+```
+daily_emission = 9,000,000,000 / 365 = 24,657,534 $aGOV
+```
+
+| Parameter                   | Value                     |
+| --------------------------- | ------------------------- |
+| Max supply                  | 10,000,000,000 $aGOV      |
+| Initial LP (at activation)  | 1,000,000,000 $aGOV (10%) |
+| Emittable supply            | 9,000,000,000 $aGOV (90%) |
+| Emission duration           | 365 days (1 year)         |
+| Daily emission              | 24,657,534 $aGOV          |
+| Weekly emission (per Epoch) | 172,602,740 $aGOV         |
+| Post-365 days               | Zero emission             |
+
+**Rationale for 1-year linear emission.** Governance mechanisms must achieve legitimacy quickly. If EMG does not demonstrate superior resource allocation within one year — observable through WorkNet performance, participation rates, and market efficiency — then it has not proven its value. One year of aggressive emission incentivizes rapid adoption and staker participation during the critical bootstrap phase. Post-emission, $aGOV value is sustained by its claim on GOV's AWP emission share — the fundamental utility of holding $aGOV.
+
+### 2. Token Utility
+
+$aGOV has a single, clean utility: **proportional claim on GOV's AWP emission.**
+
+GOV, as a WorkNet, receives AWP emission each epoch. That AWP is distributed to $aGOV holders proportionally. If GOV receives 19% of total AWP emission (the simulated equilibrium), $aGOV holders collectively receive that 19%. This is the same mechanism as every other WorkNet token in the AWP ecosystem.
+
+The market price of $aGOV reflects the market's expectation of how much AWP emission GOV will receive — which in turn depends on whether stakers value the governance service enough to allocate emission to it.
+
+#### 2.1 AWP Emission Distribution to $aGOV Holders
+
+Each epoch, GOV's AWP emission is distributed to $aGOV holders in proportion to their holdings:
+
+```
+awp_reward(holder) = gov_awp_emission × (aGOV_balance(holder) / total_aGOV_supply)
+```
+
+#### 2.2 No Additional Utility Mechanics
+
+Unlike KYA (query burns, staking gates) or COM (feature burns, listing stakes), GOV does not impose additional token sinks. The reason is structural: GOV's primary participants are veAWP stakers, not external consumers. Adding token gates would create friction between the governance mechanism and its participants. The single utility — AWP emission claim — keeps incentives clean.
+
+### 3. Emission Distribution
+
+Each epoch (weekly), the WorkNet Manager mints 172,602,740 $aGOV and distributes across six categories:
+
+| #    | Category                      | Share | Weekly $aGOV | Purpose                                                      |
+| ---- | ----------------------------- | ----- | ------------ | ------------------------------------------------------------ |
+| 1    | Voting & Trading Rewards      | 40%   | 69,041,096   | Primary reward pool: distributed to Stakers based on closing chips (§5.6). This is the core incentive — participate in governance, earn $aGOV |
+| 2    | Cognitive Premium Pool        | 10%   | 17,260,274   | Bonus allocation for Stakers whose predictions beat the market (§5.3). Rewards information advantage and analytical quality |
+| 3    | Bridging Comment Rewards      | 5%    | 8,630,137    | Reward high-quality cross-faction analysis that helps the community converge on better decisions (§7.2) |
+| 4    | Market Liquidity & Operations | 10%   | 17,260,274   | Initial prediction market liquidity seeding, order book depth maintenance, and operational infrastructure for market execution |
+| 5    | Platform Development          | 20%   | 34,520,548   | EMG platform engineering, prediction market interface, information dashboards, AI agent tooling, audit, and open-source development |
+| 6    | Owner Operations              | 15%   | 25,890,411   | Infrastructure (servers, RPC nodes, chain gas, data pipelines), team operations, legal, administrative costs |
+
+#### 3.1 AWP Emission Handling
+
+As an AWP WorkNet, GOV receives $AWP emission from the protocol. AWP emission follows the same 6-category distribution ratio as $aGOV emission. The Owner MAY adjust AWP strategy (Reserve / AddLiquidity / BuybackBurn) via the WorkNet Manager. Strategy changes MUST be announced 7 days in advance.
+
+### 4. The EMG Cycle
+
+GOV operates on weekly epochs. Each epoch has three phases:
+
+```
+Wednesday UTC 12:00    Epoch opens
+                       veAWP cross-chain snapshot → AWP Power (s_S) locked for this epoch
+                       Chips issued: chips(S) = s_S
+                       Voting window opens + prediction market opens
+
+Thursday  UTC 12:00    Voting window closes
+                       Server computes Merkle root of all votes → submitted on-chain
+                       Pure trading period begins (votes remain private)
+
+Tuesday   UTC 12:00    Prediction market freezes
+                       All votes publicly revealed → V_j computed
+                       Market settles → closing positions determined
+                       $aGOV distributed
+                       Cognitive scores updated
+                       Emission allocation W_j computed
+
+Tuesday 12:00 → Wednesday 12:00    WorkNet report window (24h)
+
+Wednesday UTC 12:00    Next epoch opens (re-snapshot, chips reset)
+```
+
+#### 4.1 Why Voting Precedes Market Settlement
+
+Votes are submitted during Phase 1 and kept private through Phase 2. This is a deliberate design choice: if voting occurred after market settlement, stakers would simply copy market prices as their votes, collapsing the distinction between preference and prediction. Private-then-revealed voting ensures the prediction market faces a genuinely hard problem — "what will the hidden votes sum to?" — which is what gives cognitive scoring its discriminating power.
+
+### 5. Mechanism Details
+
+#### 5.1 Voting
+
+Each Staker submits a signed message containing:
+
+- **Preference vote** $\mathbf{v}_S$: a probability vector across all WorkNets representing the Staker's desired emission allocation
+- **Prediction** $\mathbf{f}_S$: a probability vector representing the Staker's forecast of the aggregate vote outcome
+- EIP-712 signature binding the vote to a specific Staker (principal) and epoch
+
+Votes are submitted during the 24-hour voting window (Wednesday 12:00 → Thursday 12:00 UTC). A Staker MAY update their vote within the window; only the highest-nonce submission counts. Managers MAY submit on behalf of their Staker.
+
+The server accepts and stores votes privately. At Thursday 12:00, the server computes a Merkle root over all final votes and submits it on-chain — a tamper-proof commitment that can be verified when votes are revealed at settlement.
+
+Non-voting Stakers are treated as abstaining: their AWP Power does not influence the outcome.
+
+#### 5.2 Prediction Market
+
+A Polymarket-style conditional token market runs throughout Phase 1 and Phase 2. Each WorkNet has an independent limit order book. The fundamental operation:
+
+```
+1 chip ↔ {1 share of W_1, 1 share of W_2, ..., 1 share of W_N}
+```
+
+Stakers split chips into outcome shares, trade shares on individual WorkNet order books, and merge complete sets back into chips. The constraint $\sum P_j = 1$ is maintained by arbitrage, not by protocol subsidy.
+
+Trading rules:
+
+- Maximum trading capital: $s_S \times 0.5$ (50% of initial chips)
+- Maximum position: 20% of total open interest per WorkNet per Staker
+- All positions freeze at Tuesday 12:00 UTC
+
+At settlement, each outcome share for WorkNet $j$ pays out $V_j$ chips, where $V_j$ is the AWP-Power-weighted average of all preference votes:
+
+$$V_j = \frac{\sum_S s_S \cdot v_{S,j}}{\sum_S s_S}$$
+
+#### 5.3 Prediction Accuracy (Relative to Market)
+
+A Staker's prediction is measured not against the outcome alone, but **against the market consensus** at voting close. Copying the market price yields zero accuracy bonus — only genuine information advantage earns a premium.
+
+$$A_S = \max\left(0, \frac{D_{JS}(\mathbf{P}_{close} \| \mathbf{V}) - D_{JS}(\mathbf{f}_S \| \mathbf{V})}{D_{JS}(\mathbf{P}_{close} \| \mathbf{V})}\right)$$
+
+Where $D_{JS}$ is Jensen-Shannon divergence, $\mathbf{P}_{close}$ is the market price vector at voting window close, and $\mathbf{V}$ is the actual vote outcome. $A_S > 0$ only when the Staker's prediction is strictly more accurate than the market was.
+
+#### 5.4 Participation Discount
+
+Stakers who do not put capital at risk receive a reduced share. The discount is based on peak capital exposure, not trade count (preventing wash-trade gaming):
+
+$$\lambda_{part}(S) = 0.8 + 0.2 \times \min\left(1, \frac{MaxCapital_S}{0.2 \times s_S}\right)$$
+
+- No trading: 80% of base reward (not zero — passive stakers are still welcome, just modestly disadvantaged)
+- ≥20% capital deployed: 100% of base reward
+
+#### 5.5 Closing Chips
+
+Each Staker's closing chips combine trading performance, prediction accuracy, and participation:
+
+$$Chips_S = (s_S + PnL_S) \times (1 + 0.2 \times A_S) \times \lambda_{part}(S)$$
+
+No artificial floor. The prediction market is zero-sum; losses reflect real judgment failures and are not subsidized.
+
+#### 5.6 $aGOV Distribution
+
+The weekly Voting & Trading Rewards pool (40% of emission) is distributed proportional to closing chips:
+
+$$aGOV_S = RewardPool \times \frac{Chips_S}{\sum_T Chips_T}$$
+
+$aGOV is sent to the address returned by `AWPRegistry.resolveRecipient(S)`, allowing flexible reward routing (self, pool operator, custom address).
+
+#### 5.7 Cognitive Score Update
+
+After each epoch, Stakers' cognitive scores update via exponential moving average:
+
+$$\mathcal{E}_S^{(t)} = 0.8 \times \mathcal{E}_S^{(t-1)} + 0.2 \times \left[0.3 \times A_S + 0.7 \times norm(ROI_S)\right]$$
+
+- Initial score: 0.5 (neutral)
+- Effective memory: ~5 epochs
+- ROI channel dominates (70%) because real capital at risk is a stronger signal than cost-free prediction declarations
+
+#### 5.8 Cognitive-Weighted Emission Allocation
+
+The final emission allocation applies cognitive weighting to votes:
+
+$$W_j = \frac{\sum_S s_S \cdot g(\mathcal{E}_S) \cdot v_{S,j}}{\sum_S s_S \cdot g(\mathcal{E}_S)}$$
+
+Where the governance multiplier $g(\mathcal{E})$ maps cognitive scores to influence amplification:
+
+$$g(\mathcal{E}) = 1 + 0.5 \times \left(\frac{2}{1 + e^{-6(\mathcal{E} - 0.5)}} - 1\right)$$
+
+This produces a 3:1 maximum power ratio between the most and least cognitively scored Stakers — meaningful influence for demonstrated accuracy, without creating an elite oligarchy.
+
+Boundary constraints:
+
+- Ordinary WorkNets: $W_j \in [\epsilon/N, 0.30]$
+- GovNet: $W_{Gov} \in [0.08, 0.25]$
+
+After clipping, weights are renormalized to sum to 1.
+
+**GovNet boundaries rationale:**
+
+- 8% floor: governance infrastructure cannot be starved entirely. If stakers are broadly dissatisfied, GOV drops to 8% — enough to operate but a strong signal to improve.
+- 25% ceiling: prevents self-enrichment feedback loops. Simulations show the natural equilibrium is ~19%; the ceiling is a tail-risk safeguard.
+
+### 6. Sybil Neutrality
+
+GOV does not attempt to prevent Sybil identities. Instead, it renders splitting unprofitable through mechanism design:
+
+**Capital layer (strict Sybil neutrality):** Chips scale linearly with AWP Power. One address with 10,000 AWP Power = ten addresses with 1,000 each. Total chips, total voting weight, total reward expectation: identical.
+
+**Cognitive layer (time Sybil neutrality):** New addresses start at cognitive score 0.5. Splitting immediately dilutes accumulated cognitive capital. Over time, each split address can independently rebuild its score — but this requires the same effort as running multiple independent participants.
+
+The protocol accepts this asymmetry: capital splits instantly, cognition takes time to rebuild. This naturally discourages short-term Sybil attacks while accepting that persistent, high-effort Sybil behavior is indistinguishable from genuine multi-stakeholder participation.
+
+### 7. Information Layer
+
+#### 7.1 WorkNet Reports
+
+All WorkNets (including GOV itself) MUST submit structured weekly reports during the report window (Tuesday 12:00 → Wednesday 12:00 UTC). Reports cover: operational data, milestones, challenges, resource usage, and emission justification.
+
+WorkNets that fail to submit reports have their emission allocation dropped to the floor ($\epsilon/N$). This is not governance overreach — it is transparency enforcement. Stakers cannot allocate resources to WorkNets they cannot evaluate.
+
+Report truthfulness is enforced by market mechanism: AI agents cross-reference reports against on-chain data, identify inconsistencies, and trade accordingly. A WorkNet that exaggerates performance will see its emission allocation decline as informed stakers sell its outcome shares.
+
+#### 7.2 Bridging Comments
+
+Stakers may publish signed comments. Comment quality is measured by the Bridging algorithm: a comment scores high when it is endorsed by stakers who normally disagree with each other (measured by historical voting distance). This rewards analysis that transcends faction — the kind of insight that helps the whole community converge on better decisions, not just one side's talking points.
+
+5% of weekly $aGOV emission is distributed to high-Bridging comments.
+
+### 8. Transparency and Auditability
+
+#### 8.1 On-Chain Commitments
+
+Each epoch, GOV commits on-chain:
+
+- Voting Merkle root (Thursday 12:00 — tamper-proof commitment before votes are revealed)
+- Settlement results (Tuesday 12:00 — final emission allocation $\mathbf{W}$, cognitive score snapshot, $aGOV distribution)
+
+#### 8.2 Post-Settlement Verification
+
+After Tuesday 12:00, GOV publishes all votes (including $\mathbf{v}_S$, $\mathbf{f}_S$, and EIP-712 signatures). Any third party can:
+
+- Verify each vote's signature via `ecrecover`
+- Reconstruct the Merkle root and compare against the on-chain commitment
+- Independently compute $V_j$, $W_j$, and all reward distributions
+
+This provides **verifiable honesty**: the system works if the server is honest, and produces cryptographic evidence if it is not.
+
+#### 8.3 Published Data
+
+Each epoch, GOV publishes:
+
+- All vote vectors and predictions (post-reveal)
+- Prediction market order history and settlement
+- $aGOV distribution CSV: all recipients with amounts and category labels
+- Cognitive score updates
+- Emission allocation results with cognitive correction deltas ($\Delta_j = W_j - V_j$)
+
+### 9. Protocol Lifecycle
+
+#### 9.1 Bootstrap Phase (Epochs 1–5)
+
+| Component           | Status                                                       |
+| ------------------- | ------------------------------------------------------------ |
+| Voting              | Active — pure AWP Power weighting                            |
+| Prediction market   | Not active                                                   |
+| Cognitive scoring   | All Stakers = 0.5                                            |
+| $aGOV distribution  | Proportional to AWP Power                                    |
+| Emission allocation | $W_j = V_j$ (no cognitive weighting), GovNet bounded [8%, 25%] |
+
+Purpose: establish voting history baseline and initial reference prices for prediction market launch.
+
+#### 9.2 Calibration Phase (Epochs 6–15)
+
+| Component         | Status                                  |
+| ----------------- | --------------------------------------- |
+| Prediction market | Active                                  |
+| Bridging comments | Active                                  |
+| Cognitive scoring | Active, $\gamma$ ramps from 0.25 to 0.5 |
+| Full mechanism    | Progressively engaged                   |
+
+#### 9.3 Steady State (Epoch 16+)
+
+All mechanisms at full strength.
+
+#### 9.4 New WorkNet Onboarding
+
+When a new WorkNet passes AIP and activates:
+
+1. New dimension added to voting and prediction market
+2. Initial reference price: $\epsilon/(N+1)$
+3. Protected floor for first 3 epochs
+
+### 10. GOV's Self-Referential Structure
+
+GOV occupies a unique position: it is a WorkNet that governs all WorkNets, including itself. Stakers express their preference for GOV's emission share through $v_{S,Gov}$ — the same mechanism used for every other WorkNet.
+
+Gov Token holders are incentivized to vote for higher GOV emission (they directly benefit). Other WorkNet stakeholders are incentivized to vote for lower GOV emission (redirecting resources to their own WorkNets). The equilibrium emerges from this tension.
+
+Numerical simulations (88 Stakers, 6 WorkNets, 50 epochs, 5 random seeds) show:
+
+- Natural equilibrium: $W_{Gov} \approx 19\%$
+- The 25% ceiling rarely triggers under normal conditions
+- Expert Stakers achieve 0.18 higher cognitive scores than free-riders (Cohen's d = 2.8)
+- Sybil splitting produces <1% reward differential
+
+### 11. Governance as a Service
+
+EMG is designed as a general-purpose resource allocation protocol. Nothing in its mechanism is AWP-specific:
+
+- The prediction market structure works for any set of competing claims on shared resources
+- Cognitive scoring applies wherever there are repeated allocation decisions with measurable outcomes
+- The Sybil-neutral design requires no identity infrastructure beyond economic commitment
+- The information layer (reports + bridging comments) is domain-agnostic
+
+Any network that needs to allocate shared resources — L2 sequencer revenue, public goods funding, treasury management, protocol parameters — can deploy EMG with its own parameters. This is Governance as a Service: not outsourcing decisions, but deploying a mechanism that converts collective intelligence into accurate resource allocation.
+
+GOV governs AWP first. The mechanism is open for anyone to adopt.
+
+### 12. Key Parameters
+
+| Parameter                            | Default          | Adjustable By | Constraint                    |
+| ------------------------------------ | ---------------- | ------------- | ----------------------------- |
+| Emission duration                    | 365 days         | —             | Fixed in contract             |
+| Daily emission                       | 24,657,534 $aGOV | —             | Fixed in contract             |
+| Distribution ratios                  | §3 table         | Owner         | 7 days notice                 |
+| Epoch duration                       | 7 days           | Owner         | Cannot drop below 3 days      |
+| Voting window                        | 24 hours         | Owner         | Cannot drop below 12 hours    |
+| Trading capital limit ($\xi$)        | 0.5              | Owner         | Range [0.2, 0.8]              |
+| Position limit ($\omega_{pos}$)      | 20%              | Owner         | Range [10%, 40%]              |
+| Accuracy bonus ($\alpha$)            | 0.2              | Owner         | Range [0, 0.5]                |
+| Idle discount ($\lambda_{idle}$)     | 0.8              | Owner         | Range [0.5, 1.0]              |
+| Participation threshold ($\theta$)   | 0.2              | Owner         | Range [0.1, 0.5]              |
+| Cognitive learning rate ($\beta$)    | 0.2              | Owner         | Range [0.05, 0.4]             |
+| Max governance multiplier ($\gamma$) | 0.5              | Owner         | Range [0.2, 1.0]              |
+| GovNet emission floor                | 8%               | DAO           | Requires supermajority (≥67%) |
+| GovNet emission ceiling              | 25%              | DAO           | Requires supermajority (≥67%) |
+| Ordinary WorkNet emission ceiling    | 30%              | Owner         | Range [20%, 50%]              |
+| Collusion detection threshold        | 0.85             | Owner         | Range [0.7, 0.95]             |
+
+### 13. Security Considerations
+
+#### Flash Loan Governance Attacks
+
+**Attack**: borrow massive veAWP to dominate a single epoch's vote.
+
+**Mitigation**: AWP Power is snapshotted from veAWP positions at epoch open. veAWP requires time-locked staking — flash loans cannot create veAWP positions. The sqrt time-weighting further penalizes short-duration locks.
+
+#### Vote Manipulation via Prediction Market
+
+**Attack**: accumulate large positions to manipulate market prices, influencing cognitive scores.
+
+**Mitigations**:
+
+- 50% trading capital limit per Staker
+- 20% position limit per WorkNet per Staker
+- Epoch reset: chips clear every week, preventing cross-epoch position accumulation
+- Cognitive scores use exponential moving average over ~5 epochs, dampening single-epoch manipulation
+
+#### Collusion
+
+**Attack**: coordinated voting + trading by a Staker coalition to steer emission.
+
+**Mitigations**:
+
+- Collusion detection via voting vector correlation over 20-epoch sliding window
+- Stakers exceeding 0.85 correlation threshold receive cognitive score penalties
+- Capital-layer Sybil neutrality ensures splitting doesn't amplify rewards
+- Transparent order books expose coordinated trading patterns
+
+#### Server Trust
+
+The EMG server sees votes in plaintext during Phase 1 and Phase 2. This is the central trust assumption.
+
+**Mitigations**:
+
+- Merkle root on-chain commitment prevents post-hoc vote tampering
+- EIP-712 signatures prevent vote forgery
+- Stakers receive receipts with Merkle proofs for independent verification
+- Full vote disclosure at settlement enables complete third-party audit
+
+The server cannot tamper undetected. It could theoretically leak vote information during the private phase — this is acknowledged as a trust boundary, mitigated by the economic cost of reputation loss if discovered.
+
+### 14. Decentralization Roadmap
+
+| Phase   | Timeline   | Description                                                  |
+| ------- | ---------- | ------------------------------------------------------------ |
+| Phase 1 | Launch     | Centralized operator: GOV team runs EMG server, prediction market, and settlement. Full transparency via on-chain Merkle commitments and published data. |
+| Phase 2 | +6 months  | Multi-operator verification: independent parties can run settlement verification nodes, comparing results against on-chain commitments. |
+| Phase 3 | +12 months | Parameter governance: $aGOV holders vote on parameter changes (distribution ratios, market parameters, boundary constraints). Owner retains infrastructure operation. |
+| Phase 4 | +18 months | Full decentralization: open-source EMG server, multiple competing operators, on-chain settlement. |
+
+### 15. Future Extensions
+
+The following are not part of this specification but are planned directions:
+
+**Governance as a Service deployments.** Package EMG as a deployable governance module for external networks. L2 sequencer revenue allocation, public goods funding, cross-protocol treasury management.
+
+**AI agent tooling.** Standardized SDK for building AI governance agents — report parsing, market analysis, vote generation, comment authoring. Lower the barrier for AI participation.
+
+**Cross-chain governance.** Extend veAWP snapshot to include governance participation on other chains, enabling multi-chain stakeholders to vote from any supported network.
+
+**Governance analytics.** Public dashboard showing cognitive score distributions, market efficiency metrics, prediction accuracy trends, and emission allocation history — making governance quality measurable and comparable.
+
+## Backwards Compatibility
+
+This is a new WorkNet with no existing state. GOV introduces no changes to the AWP protocol, emission mechanism, or existing WorkNet contracts. It operates within the existing WorkNet framework. GOV reads veAWP positions and AWPRegistry state but does not modify them.
+
+Note: GOV does not use AWPAllocator. Unlike other WorkNets where Stakers delegate to Agents, GOV's "work" is the voting and trading activity of Stakers themselves. AWP Power is read directly from veAWP.
+
+## Reference Implementation
+
+- EMG Server: [TODO: repository after development]
+- GOV API: https://api.gov.works
+- SkillsURI: https://github.com/awp-worknet/gov-skill
+- Website: https://gov.works
+
+## Copyright
+
+Copyright and related rights waived via [CC0](https://creativecommons.org/publicdomain/zero/1.0/).
